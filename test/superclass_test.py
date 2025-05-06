@@ -1,14 +1,48 @@
 import os
+import sys
 import argparse
 import logging
 import traceback
+
+from pydantic.experimental.pipeline import transform
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Import the ButterflyTorch class
-from services.pytorch_superclass import ButterflyTorch
+# Add the project root directory to the Python path to enable imports
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, project_root)
+
+# Try multiple import approaches
+try:
+    # Try relative import if running from within package
+    from ..src.pytorch_superclass import ButterflyTorch
+except (ImportError, ValueError):
+    try:
+        # Try absolute import with project structure
+        from src.pytorch_superclass import ButterflyTorch
+    except ImportError:
+        try:
+            # Try direct import if the file is in the same directory
+            from pytorch_superclass import ButterflyTorch
+        except ImportError:
+            # Try to find the file in the filesystem
+            for root, dirs, files in os.walk(project_root):
+                if "pytorch_superclass.py" in files:
+                    found_path = os.path.join(root, "pytorch_superclass.py")
+                    relative_path = os.path.relpath(found_path, project_root).replace(os.sep, '.')
+                    if relative_path.endswith('.py'):
+                        relative_path = relative_path[:-3]
+                    logger.info(f"Found ButterflyTorch at: {relative_path}")
+
+                    # Dynamically import the module
+                    module_name = relative_path
+                    module = __import__(module_name, fromlist=["ButterflyTorch"])
+                    ButterflyTorch = getattr(module, "ButterflyTorch")
+                    break
+            else:
+                raise ImportError("Could not find pytorch_superclass.py in project directory")
 
 
 def test_butterfly_torch(data_path, start_idx, end_idx, transform=True):
@@ -86,29 +120,15 @@ def test_butterfly_torch(data_path, start_idx, end_idx, transform=True):
 
 
 def main(data_path,
-        start,
-        end,):
-    """
-    Main function to parse command line arguments and run the test.
-    """
-    parser = argparse.ArgumentParser(description='Test ButterflyTorch functionality with user-specified frame range')
-    parser.add_argument('--data_path', type=str, required=True,
-                        help='Path to the SQLite database file')
-    parser.add_argument('--start', type=int, required=True,
-                        help='Starting frame index')
-    parser.add_argument('--end', type=int, required=True,
-                        help='Ending frame index')
-    parser.add_argument('--no_transform', action='store_true',
-                        help='Disable the transform function')
-
-    args = parser.parse_args()
-
+         start,
+         end,
+         transformation):
     # Execute the test with the provided arguments
     success = test_butterfly_torch(
         data_path,
         start,
         end,
-        transform=not args.no_transform
+        transform=transformation
     )
 
     if success:
@@ -120,5 +140,6 @@ def main(data_path,
 if __name__ == "__main__":
     start_index = input("Enter the starting frame index: ")
     end_index = input("Enter the ending frame index: ")
-    data_path = input("Enter the path to the SQLite database file: ")
-    main()
+    transform = input("Apply normalization transform? (yes/no): ").strip().lower() == "yes"
+    data_path = "D:/Masters/Software_Architecture/Project/SA_next/video_database.db"
+    main(data_path, int(start_index), int(end_index), transform)
